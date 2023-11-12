@@ -1,19 +1,20 @@
-use crossterm::cursor::{position, MoveTo, MoveUp, MoveToNextLine};
-use crossterm::{execute, style::Print, style::{SetForegroundColor, Color, ResetColor}};
-use crossterm::terminal::{ScrollUp};
-use std::io::{stdout};
+use crossterm::cursor::{position, MoveTo, MoveToNextLine, MoveUp};
+use crossterm::terminal::{Clear, ClearType, ScrollUp};
+use crossterm::{
+    execute,
+    style::Print,
+    style::{Attribute, Color, ResetColor, SetAttribute, SetForegroundColor},
+};
 use num_format::{Locale, ToFormattedString};
+use std::io::stdout;
 use tokio::time::Instant;
-
 
 pub struct FilePrinter {
     max_line: u16,
     start_pos: (u16, u16),
 }
 
-
 impl FilePrinter {
-
     pub fn new(strap_line: &str) -> Self {
         execute!(
             stdout(),
@@ -21,16 +22,25 @@ impl FilePrinter {
             MoveUp(12),
             SetForegroundColor(Color::Yellow),
             Print(strap_line),
-            MoveToNextLine(1),
-            Print(" | Size(bytes) | created  | modified | accessed | path"),
+            MoveToNextLine(2),
+            Print(format!(
+                "    {}{}Size(bytes)   created     modified    accessed     path",
+                Attribute::Italic,
+                Attribute::Underlined
+            )),
+            SetAttribute(Attribute::Reset),
             MoveToNextLine(1),
             ResetColor
-        ).unwrap();
-        Self {max_line: 0, start_pos: position().unwrap()}
+        )
+        .unwrap();
+        Self {
+            max_line: 0,
+            start_pos: position().unwrap(),
+        }
     }
 
     pub fn close(&self) {
-        println!("\x1B[{:};999H", self.max_line + 2);  // move to end
+        execute!(stdout(), MoveTo(0, self.max_line + 2)).unwrap();
     }
 
     pub fn print_line(&mut self, line: String, line_no: u16) {
@@ -38,11 +48,12 @@ impl FilePrinter {
         execute!(
             stdout(),
             MoveTo(0, _line_no),
-            Print(&line),
-        ).unwrap();
+            Print(line),
+            Clear(ClearType::UntilNewLine),
+        )
+        .unwrap();
         self.max_line = _line_no.max(self.max_line);
     }
-
 }
 
 pub fn print_footer(start_time: Instant, file_count: usize, error_count: usize, dir_count: usize) {
@@ -72,5 +83,6 @@ pub fn print_footer(start_time: Instant, file_count: usize, error_count: usize, 
         SetForegroundColor(Color::Red),
         Print(formatted_error_count),
         ResetColor
-    ).unwrap();
+    )
+    .unwrap();
 }
