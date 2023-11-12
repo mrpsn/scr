@@ -1,22 +1,19 @@
 mod args;
 pub mod util;
 
-use crate::util::print::print_footer;
+use crate::util::print::{print_footer, display_time};
 use args::Args;
 use bisection::bisect_left;
-use chrono::{DateTime, Utc};
 use clap::Parser;
 use futures::future::join_all;
 use num_format::{Locale, ToFormattedString};
 use sorted_vec::ReverseSortedVec;
 use std::cmp::{Ordering, Reverse};
-use std::fs::DirEntry;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering::SeqCst;
 use std::sync::Arc;
-use std::thread;
-use std::time::SystemTime;
+use std::{thread};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::time::Instant;
 use util::print::FilePrinter;
@@ -36,6 +33,20 @@ struct Filesize {
     used: String,
 }
 
+
+impl From<PathBuf> for Filesize {
+    fn from(path: PathBuf) -> Self {
+        let meta = path.metadata().unwrap();
+        Self {
+            path: path.to_str().unwrap().to_string(),
+            size: path.metadata().unwrap().len(),
+            modified: display_time(meta.modified()),
+            created: display_time(meta.created()),
+            used: display_time(meta.accessed()),
+        }
+    }
+}
+
 impl Ord for Filesize {
     fn cmp(&self, other: &Self) -> Ordering {
         self.size.cmp(&other.size)
@@ -48,10 +59,6 @@ impl PartialEq for Filesize {
     }
 }
 
-fn display_time(sys_time: SystemTime) -> String {
-    let datetime: DateTime<Utc> = sys_time.into();
-    datetime.format("%Y-%m-%d").to_string()
-}
 
 
 async fn scan_dir(
@@ -62,17 +69,30 @@ async fn scan_dir(
 ) -> (usize, usize) {
     let mut file_count: usize = 0;
     let mut error_count: usize = 0;
+
+    let send_dir = |p: PathBuf|  tx_dir.send(
+        Dir{
+            path: p,
+            tx_dir: tx_dir.clone(),
+            tx_file: tx_file.clone()
+        }
+    ).expect("failed to send dir");
+
+    let send_file = |p: PathBuf|  tx_file.send(Filesize::from(p));
+
     if let Ok(dir_iter) = std::fs::read_dir(path) {
         dir_iter.into_iter()
-            .filter(|r| r.is_ok())
             .for_each(|r| match r {
-                Ok(e) if e.file_type().is_ok_and(|f| f.is_dir()) => tx_dir.send(Dir::from(e)).expect("failed to send dir"),
-                Ok(e) if e.metadata().is_ok_and(|m| m.len() >= min_size) => tx_file.send(Filesize::from(e)).expect("failed to send file"),
+                Ok(e) if e.file_type().is_ok_and(|f| f.is_dir()) => send_dir(e.path()),
+                Ok(e) if e.metadata().is_ok_and(|m| m.len() >= min_size) => send_file(e.path()).map_or_else(
+                    |_| error_count += 1,
+                    |_| file_count += 1
+                ),
                 Ok(e) if e.file_type().is_ok_and(|f| f.is_file()) => file_count +=1,
                 _ => error_count += 1,
             });
         }
-    return (file_count, errors);
+    return (file_count, error_count);
 }
 
 fn print_files(n: usize, min_size: Arc<AtomicU64>, mut rx_file: UnboundedReceiver<Filesize>) {

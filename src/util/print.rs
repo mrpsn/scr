@@ -1,3 +1,4 @@
+use std::io;
 use crossterm::cursor::{position, MoveTo, MoveToNextLine, MoveUp};
 use crossterm::terminal::{Clear, ClearType, ScrollUp};
 use crossterm::{
@@ -7,6 +8,8 @@ use crossterm::{
 };
 use num_format::{Locale, ToFormattedString};
 use std::io::stdout;
+use std::time::SystemTime;
+use chrono::{DateTime, Utc};
 use tokio::time::Instant;
 
 pub struct FilePrinter {
@@ -85,4 +88,14 @@ pub fn print_footer(start_time: Instant, file_count: usize, error_count: usize, 
         ResetColor
     )
     .unwrap();
+}
+
+
+pub(crate) fn display_time(sys_time: io::Result<SystemTime>) -> String {
+    if let Ok(t) = sys_time {
+        let datetime: DateTime<Utc> = t.into();
+        datetime.format("%Y-%m-%d").to_string()
+    } else {
+        return "-".into()
+    }
 }
