@@ -1,0 +1,92 @@
+   Compiling scanr v0.1.0 (/Users/wa/Projects/Rust/scr)
+error[E0433]: failed to resolve: could not find `linux` in `os`
+  --> src/main.rs:14:14
+   |
+14 | use std::os::linux::fs::*;
+   |              ^^^^^ could not find `linux` in `os`
+
+error[E0599]: no method named `st_size` found for struct `Metadata` in the current scope
+  --> src/main.rs:72:45
+   |
+72 | ...                   let size = meta.st_size();
+   |                                       ^^^^^^^ method not found in `Metadata`
+  --> /private/tmp/rust-20230923-7199-1y02uxq/rustc-1.72.1-src/library/std/src/os/macos/fs.rs:46:8
+   |
+   = note: the method is available for `Metadata` here
+   |
+   = help: items from traits can only be used if the trait is in scope
+help: the following trait is implemented but not in scope; perhaps add a `use` for it:
+   |
+1  + use std::os::macos::fs::MetadataExt;
+   |
+
+error: cannot check whether the hidden type of opaque type satisfies auto traits
+   --> src/main.rs:167:39
+    |
+167 |       let mut scans = vec![tokio::spawn(scan_dir(
+    |  __________________________------------_^
+    | |                          |
+    | |                          required by a bound introduced by this call
+168 | |         args.path,
+169 | |         args.minsize,
+170 | |         file_ch.0,
+171 | |         dir_ch.0,
+172 | |     ))];
+    | |_____^
+    |
+note: opaque type is declared here
+   --> src/main.rs:62:6
+    |
+62  | ) -> (usize, usize) {
+    |      ^^^^^^^^^^^^^^
+note: this item depends on auto traits of the hidden type, but may also be registering the hidden type. This is not supported right now. You can try moving the opaque type and the item that actually registers a hidden type into a new submodule
+   --> src/main.rs:146:10
+    |
+146 | async fn main() {
+    |          ^^^^
+note: required by a bound in `tokio::spawn`
+   --> /Users/wa/.cargo/registry/src/index.crates.io-6f17d22bba15001f/tokio-1.33.0/src/task/spawn.rs:166:21
+    |
+164 |     pub fn spawn<F>(future: F) -> JoinHandle<F::Output>
+    |            ----- required by a bound in this function
+165 |     where
+166 |         F: Future + Send + 'static,
+    |                     ^^^^ required by this bound in `spawn`
+
+error: cannot check whether the hidden type of opaque type satisfies auto traits
+   --> src/main.rs:176:33
+    |
+176 |           scans.push(tokio::spawn(scan_dir(
+    |  ____________________------------_^
+    | |                    |
+    | |                    required by a bound introduced by this call
+177 | |             dir.path,
+178 | |             floor.load(SeqCst),
+179 | |             dir.tx_file,
+180 | |             dir.tx_dir,
+181 | |         )));
+    | |_________^
+    |
+note: opaque type is declared here
+   --> src/main.rs:62:6
+    |
+62  | ) -> (usize, usize) {
+    |      ^^^^^^^^^^^^^^
+note: this item depends on auto traits of the hidden type, but may also be registering the hidden type. This is not supported right now. You can try moving the opaque type and the item that actually registers a hidden type into a new submodule
+   --> src/main.rs:146:10
+    |
+146 | async fn main() {
+    |          ^^^^
+note: required by a bound in `tokio::spawn`
+   --> /Users/wa/.cargo/registry/src/index.crates.io-6f17d22bba15001f/tokio-1.33.0/src/task/spawn.rs:166:21
+    |
+164 |     pub fn spawn<F>(future: F) -> JoinHandle<F::Output>
+    |            ----- required by a bound in this function
+165 |     where
+166 |         F: Future + Send + 'static,
+    |                     ^^^^ required by this bound in `spawn`
+
+Some errors have detailed explanations: E0433, E0599.
+For more information about an error, try `rustc --explain E0433`.
+error: could not compile `scanr` (bin "scanr") due to 4 previous errors
+rustc 1.72.1 (d5c2e9c34 2023-09-13) (Homebrew)
