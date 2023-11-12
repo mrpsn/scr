@@ -10,7 +10,6 @@ use futures::future::join_all;
 use num_format::{Locale, ToFormattedString};
 use sorted_vec::ReverseSortedVec;
 use std::cmp::{Ordering, Reverse};
-use std::os::windows::prelude::*;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering::SeqCst;
@@ -68,7 +67,7 @@ async fn scan_dir(
                     if typ.is_file() {
                         file_count += 1;
                         if let Ok(meta) = entry.metadata() {
-                            let size = meta.file_size();
+                            let size = meta.len();
                             if size >= min_size {
                                 let modified = meta.modified().map_or("-".into(), display_time);
                                 let created = meta.created().map_or("-".into(), display_time);
