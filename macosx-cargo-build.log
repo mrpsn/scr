@@ -1,0 +1,83 @@
+   Compiling scanr v0.1.0 (/Users/wa/Projects/Rust/scr)
+error[E0433]: failed to resolve: could not find `windows` in `os`
+  --> src/main.rs:13:14
+   |
+13 | use std::os::windows::prelude::*;
+   |              ^^^^^^^ could not find `windows` in `os`
+
+error[E0599]: no method named `file_size` found for struct `Metadata` in the current scope
+  --> src/main.rs:71:45
+   |
+71 | ...                   let size = meta.file_size();
+   |                                       ^^^^^^^^^ help: there is a method with a similar name: `file_type`
+
+error: cannot check whether the hidden type of opaque type satisfies auto traits
+   --> src/main.rs:166:39
+    |
+166 |       let mut scans = vec![tokio::spawn(scan_dir(
+    |  __________________________------------_^
+    | |                          |
+    | |                          required by a bound introduced by this call
+167 | |         args.path,
+168 | |         args.minsize,
+169 | |         file_ch.0,
+170 | |         dir_ch.0,
+171 | |     ))];
+    | |_____^
+    |
+note: opaque type is declared here
+   --> src/main.rs:61:6
+    |
+61  | ) -> (usize, usize) {
+    |      ^^^^^^^^^^^^^^
+note: this item depends on auto traits of the hidden type, but may also be registering the hidden type. This is not supported right now. You can try moving the opaque type and the item that actually registers a hidden type into a new submodule
+   --> src/main.rs:145:10
+    |
+145 | async fn main() {
+    |          ^^^^
+note: required by a bound in `tokio::spawn`
+   --> /Users/wa/.cargo/registry/src/index.crates.io-6f17d22bba15001f/tokio-1.33.0/src/task/spawn.rs:166:21
+    |
+164 |     pub fn spawn<F>(future: F) -> JoinHandle<F::Output>
+    |            ----- required by a bound in this function
+165 |     where
+166 |         F: Future + Send + 'static,
+    |                     ^^^^ required by this bound in `spawn`
+
+error: cannot check whether the hidden type of opaque type satisfies auto traits
+   --> src/main.rs:175:33
+    |
+175 |           scans.push(tokio::spawn(scan_dir(
+    |  ____________________------------_^
+    | |                    |
+    | |                    required by a bound introduced by this call
+176 | |             dir.path,
+177 | |             floor.load(SeqCst),
+178 | |             dir.tx_file,
+179 | |             dir.tx_dir,
+180 | |         )));
+    | |_________^
+    |
+note: opaque type is declared here
+   --> src/main.rs:61:6
+    |
+61  | ) -> (usize, usize) {
+    |      ^^^^^^^^^^^^^^
+note: this item depends on auto traits of the hidden type, but may also be registering the hidden type. This is not supported right now. You can try moving the opaque type and the item that actually registers a hidden type into a new submodule
+   --> src/main.rs:145:10
+    |
+145 | async fn main() {
+    |          ^^^^
+note: required by a bound in `tokio::spawn`
+   --> /Users/wa/.cargo/registry/src/index.crates.io-6f17d22bba15001f/tokio-1.33.0/src/task/spawn.rs:166:21
+    |
+164 |     pub fn spawn<F>(future: F) -> JoinHandle<F::Output>
+    |            ----- required by a bound in this function
+165 |     where
+166 |         F: Future + Send + 'static,
+    |                     ^^^^ required by this bound in `spawn`
+
+Some errors have detailed explanations: E0433, E0599.
+For more information about an error, try `rustc --explain E0433`.
+error: could not compile `scanr` (bin "scanr") due to 4 previous errors
+rustc 1.72.1 (d5c2e9c34 2023-09-13) (Homebrew)
