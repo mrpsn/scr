@@ -10,6 +10,7 @@ use futures::future::join_all;
 use num_format::{Locale, ToFormattedString};
 use sorted_vec::ReverseSortedVec;
 use std::cmp::{Ordering, Reverse};
+use std::fs::DirEntry;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering::SeqCst;
@@ -52,6 +53,7 @@ fn display_time(sys_time: SystemTime) -> String {
     datetime.format("%Y-%m-%d").to_string()
 }
 
+
 async fn scan_dir(
     path: PathBuf,
     min_size: u64,
@@ -59,48 +61,17 @@ async fn scan_dir(
     tx_dir: UnboundedSender<Dir>,
 ) -> (usize, usize) {
     let mut file_count: usize = 0;
-    let mut errors: usize = 0;
+    let mut error_count: usize = 0;
     if let Ok(dir_iter) = std::fs::read_dir(path) {
-        for entry in dir_iter {
-            if let Ok(entry) = entry {
-                if let Ok(typ) = entry.file_type() {
-                    if typ.is_file() {
-                        file_count += 1;
-                        if let Ok(meta) = entry.metadata() {
-                            let size = meta.len();
-                            if size >= min_size {
-                                let modified = meta.modified().map_or("-".into(), display_time);
-                                let created = meta.created().map_or("-".into(), display_time);
-                                let used = meta.accessed().map_or("-".into(), display_time);
-                                if let Some(file_path) = entry.path().to_str() {
-                                    let path_str = file_path.replace("\\", "/").replace("\"", "");
-                                    tx_file
-                                        .send(Filesize {
-                                            path: path_str,
-                                            size,
-                                            modified,
-                                            created,
-                                            used,
-                                        })
-                                        .expect("failed to send file size on async channel");
-                                } else {
-                                    errors += 1;
-                                }
-                            }
-                        }
-                    } else {
-                        tx_dir
-                            .send(Dir {
-                                path: entry.path(),
-                                tx_dir: tx_dir.clone(),
-                                tx_file: tx_file.clone(),
-                            })
-                            .expect("failed to send directory entry on async channel");
-                    }
-                }
-            }
+        dir_iter.into_iter()
+            .filter(|r| r.is_ok())
+            .for_each(|r| match r {
+                Ok(e) if e.file_type().is_ok_and(|f| f.is_dir()) => tx_dir.send(Dir::from(e)).expect("failed to send dir"),
+                Ok(e) if e.metadata().is_ok_and(|m| m.len() >= min_size) => tx_file.send(Filesize::from(e)).expect("failed to send file"),
+                Ok(e) if e.file_type().is_ok_and(|f| f.is_file()) => file_count +=1,
+                _ => error_count += 1,
+            });
         }
-    }
     return (file_count, errors);
 }
 
