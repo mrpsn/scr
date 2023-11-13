@@ -52,56 +52,58 @@ fn display_time(sys_time: SystemTime) -> String {
     datetime.format("%Y-%m-%d").to_string()
 }
 
+
 async fn scan_dir(
     path: PathBuf,
     min_size: u64,
     tx_file: UnboundedSender<Filesize>,
     tx_dir: UnboundedSender<Dir>,
 ) -> (usize, usize) {
-    let mut file_count: usize = 0;
-    let mut errors: usize = 0;
-    if let Ok(dir_iter) = std::fs::read_dir(path) {
-        for entry in dir_iter {
-            if let Ok(entry) = entry {
-                if let Ok(typ) = entry.file_type() {
-                    if typ.is_file() {
-                        file_count += 1;
-                        if let Ok(meta) = entry.metadata() {
+    let mut file_count = 0;
+    let mut errors = 0;
+
+    if let Ok(dir_iter) = std::fs::read_dir(&path) {
+        for entry in dir_iter.filter_map(|entry| entry.ok()) {
+            if let Ok(typ) = entry.file_type() {
+                if typ.is_file() {
+                    file_count += 1;
+                    if let Ok(meta) = entry.metadata() {
+                        if let Some(file_path) = entry.path().to_str() {
+                            let path_str = file_path.replace("\\", "/").replace("\"", "");
                             let size = meta.len();
                             if size >= min_size {
                                 let modified = meta.modified().map_or("-".into(), display_time);
                                 let created = meta.created().map_or("-".into(), display_time);
                                 let used = meta.accessed().map_or("-".into(), display_time);
-                                if let Some(file_path) = entry.path().to_str() {
-                                    let path_str = file_path.replace("\\", "/").replace("\"", "");
-                                    tx_file
-                                        .send(Filesize {
-                                            path: path_str,
-                                            size,
-                                            modified,
-                                            created,
-                                            used,
-                                        })
-                                        .expect("failed to send file size on async channel");
-                                } else {
-                                    errors += 1;
-                                }
+
+                                tx_file
+                                    .send(Filesize {
+                                        path: path_str,
+                                        size,
+                                        modified,
+                                        created,
+                                        used,
+                                    })
+                                    .expect("failed to send file size on async channel");
                             }
+                        } else {
+                            errors += 1;
                         }
-                    } else {
-                        tx_dir
-                            .send(Dir {
-                                path: entry.path(),
-                                tx_dir: tx_dir.clone(),
-                                tx_file: tx_file.clone(),
-                            })
-                            .expect("failed to send directory entry on async channel");
                     }
+                } else {
+                    tx_dir
+                        .send(Dir {
+                            path: entry.path(),
+                            tx_dir: tx_dir.clone(),
+                            tx_file: tx_file.clone(),
+                        })
+                        .expect("failed to send directory entry on async channel");
                 }
             }
         }
     }
-    return (file_count, errors);
+
+    (file_count, errors)
 }
 
 fn print_files(n: usize, min_size: Arc<AtomicU64>, mut rx_file: UnboundedReceiver<Filesize>) {
