@@ -64,8 +64,8 @@ async fn scan_dir(
 
     if let Ok(dir_iter) = std::fs::read_dir(&path) {
         for entry in dir_iter.filter_map(|entry| entry.ok()) {
-            if let Ok(typ) = entry.file_type() {
-                if typ.is_file() {
+            match entry.file_type() {
+                Ok(typ) if typ.is_file() => {
                     file_count += 1;
                     if let Ok(meta) = entry.metadata() {
                         if let Some(file_path) = entry.path().to_str() {
@@ -90,7 +90,8 @@ async fn scan_dir(
                             errors += 1;
                         }
                     }
-                } else {
+                }
+                Ok(_) => {
                     tx_dir
                         .send(Dir {
                             path: entry.path(),
@@ -98,6 +99,9 @@ async fn scan_dir(
                             tx_file: tx_file.clone(),
                         })
                         .expect("failed to send directory entry on async channel");
+                }
+                Err(_) => {
+                    errors += 1;
                 }
             }
         }
