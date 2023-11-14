@@ -111,13 +111,15 @@ async fn scan_dir(
 }
 
 fn print_files(n: usize, min_size: Arc<AtomicU64>, mut rx_file: UnboundedReceiver<Filesize>) {
-    let mut printer = FilePrinter::new(&format!("Scanning for largest {n} files.."));
+    let minimum_size = min_size.load(SeqCst);
+    let mut printer = FilePrinter::new(&format!("Scanning for largest {n} files >= {minimum_size} ..."));
     let mut entries = ReverseSortedVec::<Filesize>::new();
 
     while let Some(file) = rx_file.blocking_recv() {
         let current_min = match entries.len() >= n {
-            true => entries.last().expect("can't unwrap last entry").0.size,
-            false => min_size.load(SeqCst),
+            // true => entries.last().expect("can't unwrap last entry").0.size,
+            true => entries.last().map_or(minimum_size, |last_entry| last_entry.0.size),
+            false => minimum_size,
         };
 
         if file.size > current_min {
@@ -135,11 +137,11 @@ fn print_files(n: usize, min_size: Arc<AtomicU64>, mut rx_file: UnboundedReceive
                     printer.print_line(line, i as u16);
                 }
 
-                if entries.len() == n {
-                    if let Some(entry) = entries.last() {
-                        min_size.store(entry.0.size, SeqCst);
-                    }
-                }
+                // if entries.len() == n {
+                //     if let Some(entry) = entries.last() {
+                //         min_size.store(entry.0.size, SeqCst);
+                //     }
+                // }
             }
         }
     }
