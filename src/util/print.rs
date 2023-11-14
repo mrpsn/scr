@@ -1,11 +1,7 @@
 use std::io;
 use crossterm::cursor::{position, MoveTo, MoveToNextLine, MoveUp};
 use crossterm::terminal::{Clear, ClearType, ScrollUp};
-use crossterm::{
-    execute,
-    style::Print,
-    style::{Attribute, Color, ResetColor, SetAttribute, SetForegroundColor},
-};
+use crossterm::{execute, style::Print, style::{Attribute, Color, ResetColor, SetAttribute, SetForegroundColor}, terminal};
 use num_format::{Locale, ToFormattedString};
 use std::io::stdout;
 use std::time::SystemTime;
@@ -48,6 +44,8 @@ impl FilePrinter {
 
     pub fn print_line(&mut self, line: String, line_no: u16) {
         let _line_no = self.start_pos.1 + line_no;
+        let height = terminal::size().unwrap().1;
+        let scroll_up = (height as i16 - _line_no as i16 - 1).min(0).abs().max(10);
         execute!(
             stdout(),
             MoveTo(0, _line_no),
@@ -65,8 +63,12 @@ pub fn print_footer(start_time: Instant, file_count: usize, error_count: usize, 
     let formatted_error_count = error_count.to_formatted_string(&Locale::en);
     let formatted_dir_count = dir_count.to_formatted_string(&Locale::en);
     let elapsed_time = end_time - start_time;
+    let height = terminal::size().unwrap().1;
+    let current_line = position().unwrap().1;
+    let scroll_up = (height as i16 - current_line as i16 - 4).min(0).abs();
     execute!(
         stdout(),
+        ScrollUp(scroll_up as u16),
         Print("scanned "),
         SetForegroundColor(Color::Green),
         Print(formatted_count),
