@@ -112,7 +112,8 @@ async fn scan_dir(
 
 fn print_files(n: usize, min_size: Arc<AtomicU64>, mut rx_file: UnboundedReceiver<Filesize>) {
     let minimum_size = min_size.load(SeqCst);
-    let mut printer = FilePrinter::new(&format!("Scanning for largest {n} files >= {minimum_size} ..."));
+fn print_files(n: usize, min_size: u64, mut rx_file: UnboundedReceiver<Filesize>) {
+    // let mut printer = FilePrinter::new(&format!("Scanning for largest {n} files >= {min_size} ..."));
     let mut entries = ReverseSortedVec::<Filesize>::new();
 
     while let Some(file) = rx_file.blocking_recv() {
@@ -120,8 +121,11 @@ fn print_files(n: usize, min_size: Arc<AtomicU64>, mut rx_file: UnboundedReceive
             // true => entries.last().expect("can't unwrap last entry").0.size,
             true => entries.last().map_or(minimum_size, |last_entry| last_entry.0.size),
             false => minimum_size,
+            true => entries.last().map_or(min_size, |last_entry| last_entry.0.size),
+            false => min_size,
         };
 
+        println!("nentries {}", entries.len());
         if file.size > current_min {
             let r = Reverse(file);
             let idx = bisect_left(&entries, &r);
@@ -134,7 +138,7 @@ fn print_files(n: usize, min_size: Arc<AtomicU64>, mut rx_file: UnboundedReceive
                         "{formatted_size:>15}  {:>10}  {:>10}  {:>10}  {}",
                         entry.0.created, entry.0.modified, entry.0.used, entry.0.path
                     );
-                    printer.print_line(line, i as u16);
+                    // printer.print_line(line, i as u16);
                 }
 
                 // if entries.len() == n {
@@ -145,7 +149,7 @@ fn print_files(n: usize, min_size: Arc<AtomicU64>, mut rx_file: UnboundedReceive
             }
         }
     }
-    printer.close();
+    // printer.close();
 }
 
 #[tokio::main]
@@ -169,6 +173,7 @@ async fn main() {
     let start_time = Instant::now();
 
     let t = thread::spawn(move || print_files(args.nentries, floor_clone, file_ch.1));
+    let t = thread::spawn(move || print_files(args.nentries, args.minsize, file_ch.1));
 
     let mut scans = vec![tokio::spawn(scan_dir(
         args.path,
@@ -182,6 +187,7 @@ async fn main() {
         scans.push(tokio::spawn(scan_dir(
             dir.path,
             floor.load(SeqCst),
+            args.minsize,
             dir.tx_file,
             dir.tx_dir,
         )));
