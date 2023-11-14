@@ -49,7 +49,6 @@ fn display_time(sys_time: SystemTime) -> String {
     datetime.format("%Y-%m-%d").to_string()
 }
 
-
 async fn scan_dir(
     path: PathBuf,
     min_size: u64,
@@ -108,34 +107,40 @@ async fn scan_dir(
 }
 
 fn print_files(n: usize, min_size: u64, mut rx_file: UnboundedReceiver<Filesize>) {
-    // let mut printer = FilePrinter::new(&format!("Scanning for largest {n} files >= {min_size} ..."));
+    let mut printer =
+        FilePrinter::new(&format!("Scanning for largest {n} files >= {min_size} ..."));
     let mut entries = ReverseSortedVec::<Filesize>::new();
 
     while let Some(file) = rx_file.blocking_recv() {
-        let current_min = match entries.len() >= n {
-            true => entries.last().map_or(min_size, |last_entry| last_entry.0.size),
-            false => min_size,
-        };
+        let current_min = entries
+            .last()
+            .map_or(min_size, |last_entry| last_entry.0.size);
 
-        println!("nentries {}", entries.len());
         if file.size > current_min {
             let r = Reverse(file);
             let idx = bisect_left(&entries, &r);
             if idx <= n {
                 entries.insert(r);
-                let n_lines = n.min(entries.len());
-                for (i, entry) in entries[0..n_lines].iter().enumerate() {
-                    let formatted_size = entry.0.size.to_formatted_string(&Locale::en);
-                    let line = format!(
-                        "{formatted_size:>15}  {:>10}  {:>10}  {:>10}  {}",
-                        entry.0.created, entry.0.modified, entry.0.used, entry.0.path
+                if entries.len() > n {
+                    entries.pop();
+                }
+                for (i, entry) in entries.iter().enumerate() {
+                    printer.print_line(
+                        format!(
+                            "{:>15}  {:>10}  {:>10}  {:>10}  {}",
+                            entry.0.size.to_formatted_string(&Locale::en),
+                            entry.0.created,
+                            entry.0.modified,
+                            entry.0.used,
+                            entry.0.path
+                        ),
+                        i as u16,
                     );
-                    // printer.print_line(line, i as u16);
                 }
             }
         }
     }
-    // printer.close();
+    printer.close();
 }
 
 #[tokio::main]
@@ -152,7 +157,6 @@ async fn main() {
 
     let file_ch = unbounded_channel::<Filesize>();
     let mut dir_ch = unbounded_channel::<Dir>();
-
 
     let start_time = Instant::now();
 
