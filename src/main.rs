@@ -59,40 +59,40 @@ impl PartialEq for Filesize {
     }
 }
 
-
+#[derive(Clone)]
+struct ScanResult {
+    errors: usize,
+    files: usize,
+}
 
 async fn scan_dir(
     path: PathBuf,
     min_size: u64,
     tx_file: UnboundedSender<Filesize>,
     tx_dir: UnboundedSender<Dir>,
-) -> (usize, usize) {
-    let mut file_count: usize = 0;
-    let mut error_count: usize = 0;
+) -> ScanResult {
+    let mut errors: usize = 0;
+    let mut files: usize = 0;
 
-    let send_dir = |p: PathBuf|  tx_dir.send(
-        Dir{
-            path: p,
-            tx_dir: tx_dir.clone(),
-            tx_file: tx_file.clone()
-        }
-    ).expect("failed to send dir");
-
-    let send_file = |p: PathBuf|  tx_file.send(Filesize::from(p));
+    let _dir = |p: PathBuf|  {
+        let d = Dir{path:p, tx_dir: tx_dir.clone(), tx_file: tx_file.clone()};
+        tx_dir.send(d).expect("failed to send dir on channel");
+    };
 
     if let Ok(dir_iter) = std::fs::read_dir(path) {
-        dir_iter.into_iter()
-            .for_each(|r| match r {
-                Ok(e) if e.file_type().is_ok_and(|f| f.is_dir()) => send_dir(e.path()),
-                Ok(e) if e.metadata().is_ok_and(|m| m.len() >= min_size) => send_file(e.path()).map_or_else(
-                    |_| error_count += 1,
-                    |_| file_count += 1
-                ),
-                Ok(e) if e.file_type().is_ok_and(|f| f.is_file()) => file_count +=1,
-                _ => error_count += 1,
-            });
-        }
-    return (file_count, error_count);
+        for r in dir_iter {
+            match r {
+                Ok(e) if e.file_type().is_ok_and(|f| f.is_dir()) => _dir(e.path()),
+                Ok(e) if e.metadata().is_ok_and(|m| m.len() >= min_size) => {
+                    tx_file.send(Filesize::from(e.path())).map_or_else(
+                        |_| errors +=1, |_| files +=1);
+                },
+                Ok(e) if e.file_type().is_ok_and(|f| f.is_file()) => files +=1,
+                _ => errors += 1,
+            }
+        };
+    };
+    ScanResult{errors, files }
 }
 
 fn print_files(n: usize, min_size: Arc<AtomicU64>, mut rx_file: UnboundedReceiver<Filesize>) {
@@ -110,6 +110,9 @@ fn print_files(n: usize, min_size: Arc<AtomicU64>, mut rx_file: UnboundedReceive
             let idx = bisect_left(&entries, &r);
             if idx <= n {
                 entries.insert(r);
+                while entries.len() > n {
+                    entries.pop();
+                }
                 let n_lines = n.min(entries.len());
                 for (i, entry) in entries[0..n_lines].iter().enumerate() {
                     let formatted_size = entry.0.size.to_formatted_string(&Locale::en);
@@ -137,8 +140,8 @@ async fn main() {
 
     match std::fs::read_dir(&args.path) {
         Ok(_) => {}
-        Err(e) => {
-            println!("{e:?}");
+        Err(_) => {
+            println!("Unable to open path {:?}", args.path);
             return;
         }
     }
@@ -153,12 +156,13 @@ async fn main() {
 
     let t = thread::spawn(move || print_files(args.nentries, floor_clone, file_ch.1));
 
-    let mut scans = vec![tokio::spawn(scan_dir(
-        args.path,
-        args.minsize,
-        file_ch.0,
-        dir_ch.0,
-    ))];
+    let mut scans = vec![
+        tokio::spawn(scan_dir(
+            args.path,
+            args.minsize,
+            file_ch.0,
+            dir_ch.0,
+        ))];
 
     let mut dirs: usize = 1;
     while let Some(dir) = dir_ch.1.recv().await {
@@ -171,9 +175,9 @@ async fn main() {
         dirs += 1;
     }
 
-    let file_counts = join_all(scans).await;
+    let scan_results = join_all(scans).await;
     t.join().expect("failed to complete printer thread");
-    let file_count: usize = file_counts.iter().map(|i| i.as_ref().unwrap().0).sum();
-    let error_count: usize = file_counts.into_iter().map(|i| i.unwrap().1).sum();
+    let file_count: usize = scan_results.iter().map(|i| i.as_ref().unwrap().files).sum();
+    let error_count: usize = scan_results.into_iter().map(|i| i.unwrap().errors).sum();
     print_footer(start_time, file_count, error_count, dirs);
 }
