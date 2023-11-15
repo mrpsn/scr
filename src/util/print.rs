@@ -1,12 +1,11 @@
+use std::io;
 use crossterm::cursor::{position, MoveTo, MoveToNextLine, MoveUp};
 use crossterm::terminal::{Clear, ClearType, ScrollUp};
-use crossterm::{
-    execute,
-    style::Print,
-    style::{Attribute, Color, ResetColor, SetAttribute, SetForegroundColor},
-};
+use crossterm::{execute, style::Print, style::{Attribute, Color, ResetColor, SetAttribute, SetForegroundColor}, terminal};
 use num_format::{Locale, ToFormattedString};
 use std::io::stdout;
+use std::time::SystemTime;
+use chrono::{DateTime, Utc};
 use tokio::time::Instant;
 
 pub struct FilePrinter {
@@ -62,8 +61,12 @@ pub fn print_footer(start_time: Instant, file_count: usize, error_count: usize, 
     let formatted_error_count = error_count.to_formatted_string(&Locale::en);
     let formatted_dir_count = dir_count.to_formatted_string(&Locale::en);
     let elapsed_time = end_time - start_time;
+    let height = terminal::size().unwrap().1;
+    let current_line = position().unwrap().1;
+    let scroll_up = (height as i16 - current_line as i16 - 4).min(0).abs();
     execute!(
         stdout(),
+        ScrollUp(scroll_up as u16),
         Print("scanned "),
         SetForegroundColor(Color::Green),
         Print(formatted_count),
@@ -85,4 +88,14 @@ pub fn print_footer(start_time: Instant, file_count: usize, error_count: usize, 
         ResetColor
     )
     .unwrap();
+}
+
+
+pub(crate) fn display_time(sys_time: io::Result<SystemTime>) -> String {
+    if let Ok(t) = sys_time {
+        let datetime: DateTime<Utc> = t.into();
+        datetime.format("%Y-%m-%d").to_string()
+    } else {
+        return "-".into()
+    }
 }

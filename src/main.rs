@@ -1,10 +1,9 @@
 mod args;
 pub mod util;
 
-use crate::util::print::print_footer;
+use crate::util::print::{print_footer, display_time};
 use args::Args;
 use bisection::bisect_left;
-use chrono::{DateTime, Utc};
 use clap::Parser;
 use futures::future::join_all;
 use num_format::{Locale, ToFormattedString};
@@ -14,8 +13,7 @@ use std::path::PathBuf;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering::SeqCst;
 use std::sync::Arc;
-use std::thread;
-use std::time::SystemTime;
+use std::{thread};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::time::Instant;
 use util::print::FilePrinter;
@@ -35,6 +33,20 @@ struct Filesize {
     used: String,
 }
 
+
+impl From<PathBuf> for Filesize {
+    fn from(path: PathBuf) -> Self {
+        let meta = path.metadata().unwrap();
+        Self {
+            path: path.to_str().unwrap().to_string(),
+            size: path.metadata().unwrap().len(),
+            modified: display_time(meta.modified()),
+            created: display_time(meta.created()),
+            used: display_time(meta.accessed()),
+        }
+    }
+}
+
 impl Ord for Filesize {
     fn cmp(&self, other: &Self) -> Ordering {
         self.size.cmp(&other.size)
@@ -47,9 +59,10 @@ impl PartialEq for Filesize {
     }
 }
 
-fn display_time(sys_time: SystemTime) -> String {
-    let datetime: DateTime<Utc> = sys_time.into();
-    datetime.format("%Y-%m-%d").to_string()
+#[derive(Clone)]
+struct ScanResult {
+    errors: usize,
+    files: usize,
 }
 
 async fn scan_dir(
@@ -57,56 +70,39 @@ async fn scan_dir(
     min_size: u64,
     tx_file: UnboundedSender<Filesize>,
     tx_dir: UnboundedSender<Dir>,
-) -> (usize, usize) {
-    let mut file_count: usize = 0;
+) -> ScanResult {
     let mut errors: usize = 0;
+    let mut files: usize = 0;
+
     if let Ok(dir_iter) = std::fs::read_dir(path) {
-        for entry in dir_iter {
-            if let Ok(entry) = entry {
-                if let Ok(typ) = entry.file_type() {
-                    if typ.is_file() {
-                        file_count += 1;
-                        if let Ok(meta) = entry.metadata() {
-                            let size = meta.len();
-                            if size >= min_size {
-                                let modified = meta.modified().map_or("-".into(), display_time);
-                                let created = meta.created().map_or("-".into(), display_time);
-                                let used = meta.accessed().map_or("-".into(), display_time);
-                                if let Some(file_path) = entry.path().to_str() {
-                                    let path_str = file_path.replace("\\", "/").replace("\"", "");
-                                    tx_file
-                                        .send(Filesize {
-                                            path: path_str,
-                                            size,
-                                            modified,
-                                            created,
-                                            used,
-                                        })
-                                        .expect("failed to send file size on async channel");
-                                } else {
-                                    errors += 1;
-                                }
-                            }
-                        }
-                    } else {
-                        tx_dir
-                            .send(Dir {
-                                path: entry.path(),
-                                tx_dir: tx_dir.clone(),
-                                tx_file: tx_file.clone(),
-                            })
-                            .expect("failed to send directory entry on async channel");
-                    }
-                }
+        for r in dir_iter {
+            match r {
+
+                Ok(e) if e.file_type().is_ok_and(|f| f.is_dir()) => tx_dir.send(
+                    Dir{path: e.path(), tx_dir: tx_dir.clone(), tx_file: tx_file.clone()})
+                                .expect("failed to send dir on channel"),
+
+                Ok(e) if e.metadata().is_ok_and(|m| m.len() >= min_size) =>
+                    tx_file.send(
+                        Filesize::from(e.path())).map_or_else(
+                        |_| errors +=1, |_| files +=1),
+
+                Ok(e) if e.metadata().is_err() => errors += 1,
+
+                Ok(_) => files +=1,  // file loaded ok, but < the minimum size
+
+                Err(_) => errors +=1,
             }
-        }
-    }
-    return (file_count, errors);
+        };
+    };
+    ScanResult{errors, files }
 }
+
 
 fn print_files(n: usize, min_size: Arc<AtomicU64>, mut rx_file: UnboundedReceiver<Filesize>) {
     let mut printer = FilePrinter::new(&format!("Scanning for largest {n} files.."));
-    let mut entries = ReverseSortedVec::<Filesize>::new();
+
+    let mut entries = ReverseSortedVec::<Filesize>::with_capacity(n);
 
     while let Some(file) = rx_file.blocking_recv() {
         let current_min = match entries.len() >= n {
@@ -119,20 +115,24 @@ fn print_files(n: usize, min_size: Arc<AtomicU64>, mut rx_file: UnboundedReceive
             let idx = bisect_left(&entries, &r);
             if idx <= n {
                 entries.insert(r);
-                let n_lines = n.min(entries.len());
-                for (i, entry) in entries[0..n_lines].iter().enumerate() {
-                    let formatted_size = entry.0.size.to_formatted_string(&Locale::en);
-                    let line = format!(
-                        "{formatted_size:>15}  {:>10}  {:>10}  {:>10}  {}",
-                        entry.0.created, entry.0.modified, entry.0.used, entry.0.path
-                    );
-                    printer.print_line(line, i as u16);
+                while entries.len() > n {
+                    entries.pop();
                 }
 
                 if entries.len() == n {
                     if let Some(entry) = entries.last() {
                         min_size.store(entry.0.size, SeqCst);
                     }
+                }
+
+                let n_lines = n.min(entries.len());
+                for (i, entry) in entries[idx..n_lines].iter().enumerate() {
+                    let formatted_size = entry.0.size.to_formatted_string(&Locale::en);
+                    let line = format!(
+                        "{formatted_size:>15}  {:>10}  {:>10}  {:>10}  {}",
+                        entry.0.created, entry.0.modified, entry.0.used, entry.0.path
+                    );
+                    printer.print_line(line, (idx + i) as u16);
                 }
             }
         }
@@ -146,8 +146,8 @@ async fn main() {
 
     match std::fs::read_dir(&args.path) {
         Ok(_) => {}
-        Err(e) => {
-            println!("{e:?}");
+        Err(_) => {
+            println!("Unable to open path {:?}", args.path);
             return;
         }
     }
@@ -157,17 +157,22 @@ async fn main() {
 
     let floor = Arc::new(AtomicU64::new(args.minsize));
     let floor_clone = Arc::clone(&floor);
-
     let start_time = Instant::now();
 
-    let t = thread::spawn(move || print_files(args.nentries, floor_clone, file_ch.1));
+    let t = thread::spawn(move ||
+        print_files(
+            args.nentries,
+            floor_clone,
+            file_ch.1)
+    );
 
-    let mut scans = vec![tokio::spawn(scan_dir(
-        args.path,
-        args.minsize,
-        file_ch.0,
-        dir_ch.0,
-    ))];
+    let mut scans = vec![
+        tokio::spawn(scan_dir(
+            args.path,
+            args.minsize,
+            file_ch.0,
+            dir_ch.0,
+        ))];
 
     let mut dirs: usize = 1;
     while let Some(dir) = dir_ch.1.recv().await {
@@ -180,9 +185,9 @@ async fn main() {
         dirs += 1;
     }
 
-    let file_counts = join_all(scans).await;
-    t.join().expect("failed to complete printer thread");
-    let file_count: usize = file_counts.iter().map(|i| i.as_ref().unwrap().0).sum();
-    let error_count: usize = file_counts.into_iter().map(|i| i.unwrap().1).sum();
+    let scan_results = join_all(scans).await;
+    t.join().expect("failed to complete printing");
+    let file_count: usize = scan_results.iter().map(|i| i.as_ref().unwrap().files).sum();
+    let error_count: usize = scan_results.into_iter().map(|i| i.unwrap().errors).sum();
     print_footer(start_time, file_count, error_count, dirs);
 }
