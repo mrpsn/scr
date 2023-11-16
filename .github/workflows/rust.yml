@@ -23,3 +23,9 @@ jobs:
           - uses: actions/checkout@v3
           - name: Build
             run: cargo build --release
+            
+          - name: upload windows build
+            uses: actions/upload-artifact@v3
+            with:
+              name: scr.exe
+              path: target/release/scanr.exe
