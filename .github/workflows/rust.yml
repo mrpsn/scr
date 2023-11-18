@@ -1,0 +1,31 @@
+name: Rust
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  ubuntu_build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Build
+      run: cargo build --release
+
+  windows_build:
+      runs-on: windows-latest
+      steps:
+          - uses: actions/checkout@v3
+          - name: Build
+            run: cargo build --release
+            
+          - name: upload windows build
+            uses: actions/upload-artifact@v3
+            with:
+              name: scr.exe
+              path: target/release/scanr.exe
