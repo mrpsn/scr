@@ -2,11 +2,8 @@ mod args;
 pub mod util;
 
 use crate::util::print::{print_footer, display_time};
-use args::Args;
 use bisection::bisect_left;
-use clap::Parser;
 use futures::future::join_all;
-use num_format::{Locale, ToFormattedString};
 use sorted_vec::ReverseSortedVec;
 use std::cmp::{Ordering, Reverse};
 use std::path::PathBuf;
@@ -14,9 +11,12 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering::SeqCst;
 use std::sync::Arc;
 use std::{thread};
+use std::iter::Sum;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::time::Instant;
 use util::print::FilePrinter;
+use crate::args::Args;
+
 
 struct Dir {
     path: PathBuf,
@@ -25,7 +25,7 @@ struct Dir {
 }
 
 #[derive(PartialOrd, Eq, Clone)]
-struct Filesize {
+pub struct Filesize {
     path: String,
     size: u64,
     modified: String,
@@ -59,11 +59,27 @@ impl PartialEq for Filesize {
     }
 }
 
-#[derive(Clone)]
-struct ScanResult {
+
+#[derive(Clone, Default)]
+pub struct ScanResult {
     errors: usize,
     files: usize,
+    directories: usize,
 }
+
+impl Sum for ScanResult {
+    fn sum<I>(iter: I) -> Self
+        where
+            I: Iterator<Item = Self>,
+    {
+        iter.fold(Self::default(), |acc, val| Self {
+            errors: acc.errors + val.errors,
+            files: acc.files + val.files,
+            directories: acc.directories + val.directories,
+        })
+    }
+}
+
 
 async fn scan_dir(
     path: PathBuf,
@@ -83,8 +99,7 @@ async fn scan_dir(
                                 .expect("failed to send dir on channel"),
 
                 Ok(e) if e.metadata().is_ok_and(|m| m.len() >= min_size) =>
-                    tx_file.send(
-                        Filesize::from(e.path())).map_or_else(
+                    tx_file.send(e.path().into()).map_or_else(
                         |_| errors +=1, |_| files +=1),
 
                 Ok(e) if e.metadata().is_err() => errors += 1,
@@ -94,13 +109,18 @@ async fn scan_dir(
                 Err(_) => errors +=1,
             }
         };
+    } else {
+        errors += 1;
     };
-    ScanResult{errors, files }
+    ScanResult{errors, files, directories: 1}
 }
 
 
-fn print_files(n: usize, min_size: Arc<AtomicU64>, mut rx_file: UnboundedReceiver<Filesize>) {
-    let mut printer = FilePrinter::new(&format!("Scanning for largest {n} files.."));
+fn print_files(min_size: Arc<AtomicU64>, mut rx_file: UnboundedReceiver<Filesize>) {
+    let n = Args::parse_args().nentries;
+    let mut printer = FilePrinter::new(
+        &format!("Scanning for largest {n} files.."),
+    );
 
     let mut entries = ReverseSortedVec::<Filesize>::with_capacity(n);
 
@@ -127,30 +147,17 @@ fn print_files(n: usize, min_size: Arc<AtomicU64>, mut rx_file: UnboundedReceive
 
                 let n_lines = n.min(entries.len());
                 for (i, entry) in entries[idx..n_lines].iter().enumerate() {
-                    let formatted_size = entry.0.size.to_formatted_string(&Locale::en);
-                    let line = format!(
-                        "{formatted_size:>15}  {:>10}  {:>10}  {:>10}  {}",
-                        entry.0.created, entry.0.modified, entry.0.used, entry.0.path
-                    );
-                    printer.print_line(line, (idx + i) as u16);
+                    printer.print_line(entry.0.clone(), (idx + i) as u16);
                 }
             }
         }
     }
-    printer.close();
+    printer.print_final(n);
 }
 
 #[tokio::main]
 async fn main() {
-    let args = Args::parse();
-
-    match std::fs::read_dir(&args.path) {
-        Ok(_) => {}
-        Err(_) => {
-            println!("Unable to open path {:?}", args.path);
-            return;
-        }
-    }
+    let args = Args::parse_args();
 
     let file_ch = unbounded_channel::<Filesize>();
     let mut dir_ch = unbounded_channel::<Dir>();
@@ -159,22 +166,22 @@ async fn main() {
     let floor_clone = Arc::clone(&floor);
     let start_time = Instant::now();
 
-    let t = thread::spawn(move ||
-        print_files(
-            args.nentries,
-            floor_clone,
-            file_ch.1)
-    );
+    let t = thread::Builder::new()
+        .name("file_printer".into())
+        .spawn(move ||
+            print_files(
+                floor_clone,
+                file_ch.1,
+            )
+        ).unwrap();
 
-    let mut scans = vec![
-        tokio::spawn(scan_dir(
-            args.path,
-            args.minsize,
-            file_ch.0,
-            dir_ch.0,
-        ))];
+    let init = move ||
+        dir_ch.0.send(
+            Dir{path: args.path, tx_dir: dir_ch.0.clone(), tx_file: file_ch.0}
+        ).unwrap();
+    init();
 
-    let mut dirs: usize = 1;
+    let mut scans = vec![];
     while let Some(dir) = dir_ch.1.recv().await {
         scans.push(tokio::spawn(scan_dir(
             dir.path,
@@ -182,12 +189,17 @@ async fn main() {
             dir.tx_file,
             dir.tx_dir,
         )));
-        dirs += 1;
     }
 
-    let scan_results = join_all(scans).await;
+    let total: ScanResult  = join_all(scans)
+        .await
+        .into_iter()
+        .map(|r| r.unwrap_or_default())
+        .sum();
+
     t.join().expect("failed to complete printing");
-    let file_count: usize = scan_results.iter().map(|i| i.as_ref().unwrap().files).sum();
-    let error_count: usize = scan_results.into_iter().map(|i| i.unwrap().errors).sum();
-    print_footer(start_time, file_count, error_count, dirs);
+
+    let end_time = Instant::now();
+    let elapsed_time = end_time - start_time;
+    print_footer(elapsed_time, total);
 }
