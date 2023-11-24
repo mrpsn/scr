@@ -1,5 +1,6 @@
 use clap::{arg, command, Parser};
 use std::path::PathBuf;
+use std::process;
 
 /// A fast directory tree scanner, listing the top n files in the tree
 /// by size. Intended use, is to help quickly identify which files are
@@ -40,8 +41,9 @@ impl Args {
         args
     }
     fn validate(&self) {
-        if let Err(err) = std::fs::read_dir(&self.path) {
-            panic!("Invalid path {:?}: {}", self.path, err);
+        if ! self.path.is_dir() {
+            eprintln!("Error: The path '{}' does not exist or is not a directory.", self.path.display());
+            process::exit(2);
         }
     }
 
