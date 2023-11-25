@@ -138,7 +138,9 @@ fn print_files(min_size: Arc<AtomicU64>, mut rx_file: UnboundedReceiver<StatusUp
         match msg {
             StatusUpdate::Result(sr) => {
                 current_status += sr;
-                printer.print_status(StatusMsg::Status(&current_status));
+                if &current_status.directories % 10 == 0 {
+                    printer.print_status(StatusMsg::Status(&current_status));
+                }
             },
 
             StatusUpdate::File(file) => {
