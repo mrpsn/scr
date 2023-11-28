@@ -1,11 +1,11 @@
 use std::fmt::{Display, Formatter};
 use std::io;
-use crossterm::cursor::{position, MoveTo, MoveToNextLine};
+use crossterm::cursor::{position, MoveTo};
 use crossterm::terminal::{Clear, ClearType, ScrollUp};
 use crossterm::{execute, style::Print, style::{Attribute, Color, ResetColor, SetAttribute, SetForegroundColor}, terminal, queue};
 use num_format::{Locale, ToFormattedString};
 use std::io::{stdout, Write};
-use std::time::{Duration, SystemTime};
+use std::time::{SystemTime};
 use chrono::{DateTime, Utc};
 use sorted_vec::ReverseSortedVec;
 use crate::{Filesize, ScanResult, StatusMsg};
@@ -74,9 +74,6 @@ impl FilePrinter {
         }
         stdout().flush().unwrap();
     }
-}
-
-impl FilePrinter {
     pub fn new(_strap_line: &str) -> Self {
         let args = Args::parse_args();
 
@@ -149,56 +146,6 @@ impl FilePrinter {
         self.start_line -= scrolls;
         self.status_line -= scrolls as u16;
     }
-}
-
-
-pub fn print_footer(elapsed_time: Duration, total: ScanResult) {
-
-    let formatted_count = total.files.to_formatted_string(&Locale::en);
-    let formatted_dir_count = total.directories.to_formatted_string(&Locale::en);
-
-    let mut stdout = stdout();
-
-    let terminal_end = terminal::size().unwrap().1;
-    if  position().unwrap().1 == terminal_end {
-        queue!(
-            stdout,
-            ScrollUp(2),
-            Print("\n"),
-            MoveTo(0, terminal_end),
-        ).unwrap();
-    }
-    queue!(
-        stdout,
-        Print("\n"),
-        MoveToNextLine(2),
-        Print("scanned "),
-        SetForegroundColor(Color::Green),
-        Print(formatted_count),
-        ResetColor,
-        Print(" files, "),
-        SetForegroundColor(Color::Green),
-        Print(formatted_dir_count),
-        ResetColor,
-        Print(" directories in "),
-        SetForegroundColor(Color::Green),
-        Print(format!("{:.3}", elapsed_time.as_secs_f64())),
-        ResetColor,
-        Print(" seconds"),
-    ).unwrap();
-
-    if total.errors > 0 {
-        queue!(
-            stdout,
-            Print(". (File loading errors: "),
-            SetForegroundColor(Color::Red),
-            Print(total.errors.to_formatted_string(&Locale::en)),
-            ResetColor,
-            Print(")"),
-        ).unwrap();
-    }
-    queue!(stdout, Print("\n")).unwrap();
-    stdout.flush().unwrap();
 }
 
 
