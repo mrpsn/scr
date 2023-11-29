@@ -101,6 +101,8 @@ async fn scan_dir(
         for r in dir_iter {
             match r {
 
+                Ok(e) if e.file_type().is_ok_and(|f| f.is_symlink()) => {},
+
                 Ok(e) if e.file_type().is_ok_and(|f| f.is_dir()) => tx_dir.send(
                     Dir{path: e.path(), tx_dir: tx_dir.clone(), tx_file: tx_file.clone()})
                                 .expect("failed to send dir on channel"),
