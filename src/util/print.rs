@@ -51,11 +51,13 @@ pub struct FilePrinter {
     pub page_size: usize,
     print_index: bool,
     size_factor: f64,
+    flush_count: usize,
+    status_count: usize,
 }
 
 impl FilePrinter {
-    pub fn print_status(&self, msg: StatusMsg) {
-
+    pub fn print_status(&mut self, msg: StatusMsg) {
+        self.status_count += 1;
         queue!(stdout(), MoveTo(0, self.status_line)).unwrap();
 
         match msg {
@@ -72,13 +74,16 @@ impl FilePrinter {
             },
             StatusMsg::Status(sr) => queue!(stdout(), Print(Status(sr))).unwrap(),
         }
-        stdout().flush().unwrap();
+        if self.status_count % 20 == 0 {
+            stdout().flush().unwrap();
+        }
     }
+
     pub fn new(_strap_line: &str) -> Self {
         let args = Args::parse_args();
 
         let mut size_factor: f64 = 1f64;
-        let mut size_heading: String = "Byt".into();
+        let mut size_heading: String = "Bytes".into();
         if args.g_byt {
             size_factor = 1024f64.powi(3);
             size_heading = "Gb".into();
@@ -97,11 +102,9 @@ impl FilePrinter {
             SetForegroundColor(Color::Yellow),
             Print("\n"),
             Print(format!(
-                "    {}{}{}  Size({})    created     modified    accessed     path",
-                lpad,
+                "{lpad}{}{}    {size_heading:>10}    created     modified    accessed     path",
                 Attribute::Italic,
                 Attribute::Underdotted,
-                size_heading,
             )),
             SetAttribute(Attribute::Reset),
             Print("\n"),
@@ -116,6 +119,8 @@ impl FilePrinter {
             page_size: 30,
             print_index: args.index_print,
             size_factor,
+            flush_count: 0,
+            status_count: 0,
         }
     }
 
@@ -125,26 +130,33 @@ impl FilePrinter {
         }
     }
 
-    pub fn print_final(self, entries: ReverseSortedVec<Filesize>, status: StatusMsg) {
+    pub fn print_final(mut self, entries: ReverseSortedVec<Filesize>, status: StatusMsg) {
         let lines = self.page_size;
+        self.print_status(status);
+
         if entries.len() > lines {
-            execute!(stdout(), MoveTo(0, self.max_line)).unwrap();
+            queue!(stdout(), MoveTo(0, self.max_line)).unwrap();
 
             for (i, entry) in entries.iter().skip(lines).enumerate() {
                 let ff = FileFormat(&entry.0, self.size_factor);
-                print(ff, lines + i, self.start_line, self.print_index);
+                let (_, scrolls) = print(ff, lines + i, self.start_line, self.print_index, false);
+                queue!(stdout(), Print("\n")).unwrap();
+                self.status_line -= scrolls;
             }
+
+        } else {
+            queue!(stdout(), MoveTo(0, self.max_line)).unwrap();
         }
-        self.print_status(status);
-        execute!(stdout(), MoveTo(0, self.max_line + 2), Print("\n\n")).unwrap();
+        execute!(stdout(), Print("\n\n")).unwrap();
     }
 
     fn print(&mut self, entry: &Filesize, line_no: usize) {
+        self.flush_count += 1;
         let ff = FileFormat(entry, self.size_factor);
-        let (_line_no, scrolls) = print(ff, line_no, self.start_line, self.print_index);
+        let (_line_no, scrolls) = print(ff, line_no, self.start_line, self.print_index, self.flush_count % 2 ==0);
         self.max_line = _line_no.max(self.max_line);
-        self.start_line -= scrolls;
-        self.status_line -= scrolls as u16;
+        self.start_line -= scrolls as i16;
+        self.status_line -= scrolls;
     }
 }
 
@@ -158,12 +170,12 @@ pub fn display_time(sys_time: io::Result<SystemTime>) -> String {
     }
 }
 
-fn print(entry: FileFormat, line_no: usize, start_line: i16, print_index: bool) -> (u16, i16) {
+fn print(entry: FileFormat, line_no: usize, start_line: i16, print_index: bool, flush: bool) -> (u16, u16) {
     let mut _line_no = (start_line + line_no as i16) as u16;
     let terminal_end = terminal::size().unwrap().1;
-    let mut scrolls: i16 = 0;
+    let mut scrolls: u16 = 0;
     if _line_no == terminal_end {
-        execute!(
+        queue!(
                     stdout(),
                     ScrollUp(1),
                     MoveTo(0, terminal_end),
@@ -172,7 +184,7 @@ fn print(entry: FileFormat, line_no: usize, start_line: i16, print_index: bool) 
         scrolls = 1;
     }
 
-    execute!(
+    queue!(
                 stdout(),
                 MoveTo(0, _line_no),
                 Print(if print_index {format!("{:>3} ", line_no + 1)}  else {"".into()}),
@@ -180,5 +192,8 @@ fn print(entry: FileFormat, line_no: usize, start_line: i16, print_index: bool) 
                 Clear(ClearType::UntilNewLine),
             )
         .unwrap();
+    if flush {
+        stdout().flush().unwrap();
+    }
     (_line_no, scrolls)
 }
