@@ -23,9 +23,22 @@ jobs:
           - uses: actions/checkout@v3
           - name: Build
             run: cargo build --release
-            
+
+          - name: Package for NuGet
+            run: |
+                mkdir nuget
+                cp target/release/scanr.exe nuget/
+                cp choco_install.ps1 nuget/tools/choco_install.ps1
+                cd nuget
+                choco pack
+
+          - name: Create GitHub Release
+            uses: softprops/action-gh-release@v1
+            with:
+              files: 'nuget/*.nupkg'
+
           - name: upload windows build
             uses: actions/upload-artifact@v3
             with:
-              name: scr.exe
+              name: scanr.exe
               path: target/release/scanr.exe

@@ -6,7 +6,7 @@ Examples:
 
 ```
 > scanr C:\Users -n 5
-Scanning for largest 5 files..
+scanned 563,115 files, 22,965 directories in 2.875 seconds
  
     Size(bytes)   created     modified    accessed     path
     167,205,677  2023-11-04  2023-11-04  2023-11-04  C:/Users/mrpsn/AppData/Roaming/Code/CachedExtensionVSIXs/ms-dotnettools.csharp-2.9.20-win32-x64
@@ -19,7 +19,7 @@ Scanning for largest 5 files..
 
 ```
 > scanr "c:\Program Files"
-Scanning for largest 10 files..
+scanned 144,056 files, 17,993 directories in 1.843 seconds
 
     Size(bytes)   created     modified    accessed     path
     738,013,184  2023-06-03  2023-06-17  2023-06-17  c:\Program Files\Docker\Docker\resources\services.iso
@@ -33,7 +33,4 @@ Scanning for largest 10 files..
     175,368,192  2023-06-03  2023-06-17  2023-06-17  c:\Program Files\Docker\Docker\resources\wsl\docker-for-wsl.iso
     158,019,504  2023-06-17  2023-04-27  2023-11-18  c:\Program Files\Tabby\Tabby.exe
 
-
-scanned 144,056 files, 17,993 directories in 1.843 seconds
-file loading errors: 0
 ```
