@@ -1,6 +1,5 @@
 # scr
-A simple directory tree scanner.
-Intended for use in finding large files taking up storage.
+A simple directory tree scanner. Quickly find large files taking up storage space.
 
 Examples:
 

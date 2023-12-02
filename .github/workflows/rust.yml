@@ -20,25 +20,47 @@ jobs:
   windows_build:
       runs-on: windows-latest
       steps:
-          - uses: actions/checkout@v3
-          - name: Build
-            run: cargo build --release
+        - uses: actions/checkout@v3
 
-          - name: Package for NuGet
-            run: |
-                mkdir nuget
-                cp target/release/scanr.exe nuget/
-                cp choco_install.ps1 nuget/tools/choco_install.ps1
-                cd nuget
-                choco pack
+        - name: install cargo wix
+          run: cargo install cargo-wix
 
-          - name: Create GitHub Release
-            uses: softprops/action-gh-release@v1
-            with:
-              files: 'nuget/*.nupkg'
+        - name: Rust build
+          id: build
+          run: |
+            cargo build --release
+            echo "version=cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version'" >> $GITHUB_OUTPUT
 
-          - name: upload windows build
-            uses: actions/upload-artifact@v3
-            with:
-              name: scanr.exe
-              path: target/release/scanr.exe
+        - name: Generate MSI installer
+          id: generate_msi
+          run:  |
+              cargo wix
+              dir target\wix
+              echo "msi_file=dir target\wix\*.msi -n" >> $ GITHUB_OUTPUT
+
+        - name: Package for NuGet
+          run: |
+            if (-not (Test-Path nuget)) {
+              mkdir nuget
+            }
+            $msi_file = (Get-ChildItem -Path target/wix/*.msi).Name
+            echo "path: ${msi_file}"
+            cp  target/wix/$msi_file nuget/
+            cd nuget
+            dir
+            choco pack
+            choco apikey --key ${{ secrets.CHOCO_API_KEY }} --source https://push.chocolatey.org/
+#            choco push nuget/*.nupkg --source https://push.chocolatey.org/
+
+        - name: Create GitHub Release
+          uses: softprops/action-gh-release@v1
+          with:
+            files: 'nuget/*.nupkg'
+            token: ${{ secrets.GITHUB_TOKEN }}
+          if: startsWith(github.ref, 'refs/tags/')
+
+        - name: upload windows build
+          uses: actions/upload-artifact@master
+          with:
+            name: ${{ steps.generate_msi.outputs.msi_file }}
+            path: target/wix/*.msi

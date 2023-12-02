@@ -4,6 +4,6 @@
     <id>scanr</id>
     <version>0.1.0</version>
     <authors>mrpsn</authors>
-    <description>"Rapidly find the biggest files in a directory tree. 100% Rust."</description>
+    <description>"Rapidly find big files in a directory tree. Free your disk space. 100% Rust."</description>
   </metadata>
 </package>
