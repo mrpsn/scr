@@ -25,8 +25,7 @@ jobs:
         - name: Rust build
           id: build
           run: |
-            $check=${{ github.ref }}
-            echo "github.ref = $check"
+            echo "github.ref = ${{ github.ref }}  github.event.ref = ${{ github.event.ref }}"
             cargo build --release --target-dir nuget
 
   windows_package_release:
