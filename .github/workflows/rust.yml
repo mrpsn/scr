@@ -30,7 +30,7 @@ jobs:
   windows_package_release:
       runs-on: windows-latest
       needs: windows_build
-      if: startsWith(github.ref, 'refs/tags/')
+      if: startsWith(github.event.ref, 'refs/tags/')
       steps:
         - name: Package for NuGet
           env:
