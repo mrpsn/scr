@@ -3,7 +3,8 @@
     <metadata>
         <id>scanr</id>
         <title>Fast directory scanner</title>
-        <version>0.1.0</version>
+        <summary>Scanr: A rapid cli directory scanner, pure Rust.</summary>
+        <version>0.0.0</version>
         <authors>mrpsn</authors>
         <description><![CDATA[
                     Rapidly find large files in a directory tree.
@@ -12,6 +13,14 @@
                 ]]></description>
         <tags>rust cli basic simple directory scan fast rapid pure-rust cmd shell terminal</tags>
         <projectUrl>https://github.com/mrpsn/scr</projectUrl>
+        <packageSourceUrl>https://github.com/mrpsn/scr/tree/master</packageSourceUrl>
+        <licenseUrl>https://www.apache.org/licenses/LICENSE-2.0</licenseUrl>
+        <releaseNotes>
+                    <![CDATA[
+                        Version 0.0.0:
+                        - Alpha release.
+                    ]]>
+                </releaseNotes>
     </metadata>
     <files>
         <file src="verification.txt" target="" />

@@ -32,6 +32,13 @@ jobs:
             CHOCO_API_KEY: ${{ secrets.CHOCO_API_KEY }}
           run: |
             cd nuget
+            
+            $version = cargo metadata --no-deps --format-version 1 | jq '.packages[0].version' --raw-output
+            echo "setting nupsec version=$version" 
+            $nuspec = Get-Content -Path "scanr.nuspec" -Raw
+            $nuspec = $nuspec -replace '0.0.0', $version
+            $nuspec | Set-Content -Path "scanr.nuspec"
+            
             $md5 = (Get-FileHash -Path "release\scanr.exe" -Algorithm MD5).Hash
             $sha = (Get-FileHash -Path "release\scanr.exe" -Algorithm SHA256).Hash
             

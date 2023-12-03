@@ -9,7 +9,7 @@ use std::process;
 #[command(author, version, about, long_about = None)]
 pub struct Args {
     /// A valid directory path to start scanning from. Defaults to '.'
-    #[arg(index = 1, value_name = "PATH")]
+    #[arg(index = 1, value_name = "PATH", default_value = ".")]
     pub path: PathBuf,
 
     /// Find files >= to size (in bytes).
@@ -42,7 +42,7 @@ impl Args {
     }
     fn validate(&self) {
         if ! self.path.is_dir() {
-            eprintln!("Error: The path '{}' does not exist or is not a directory.", self.path.display());
+            eprintln!("Error: The path {} does not exist or is not a directory.", self.path.display());
             process::exit(2);
         }
     }
