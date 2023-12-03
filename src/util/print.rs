@@ -65,7 +65,7 @@ impl FilePrinter {
                 queue!(
                     stdout(),
                     Print(Status(&sr)),
-                    Print(" in "),
+                    Print("in "),
                     SetForegroundColor(Color::Green),
                     Print(format!("{:.3}", elapsed_time.as_secs_f64())),
                     ResetColor,
@@ -96,6 +96,8 @@ impl FilePrinter {
             true => "    ",
             false => "",
         };
+
+        terminal::enable_raw_mode().expect("Failed to enable raw mode");
         execute!(
             stdout(),
             ScrollUp(2),
@@ -148,6 +150,7 @@ impl FilePrinter {
             queue!(stdout(), MoveTo(0, self.max_line)).unwrap();
         }
         execute!(stdout(), Print("\n\n")).unwrap();
+        terminal::disable_raw_mode().expect("Failed to disable raw mode");
     }
 
     fn print(&mut self, entry: &Filesize, line_no: usize) {
@@ -174,6 +177,7 @@ fn print(entry: FileFormat, line_no: usize, start_line: i16, print_index: bool, 
     let mut _line_no = (start_line + line_no as i16) as u16;
     let terminal_end = terminal::size().unwrap().1;
     let mut scrolls: u16 = 0;
+
     if _line_no == terminal_end {
         queue!(
                     stdout(),
