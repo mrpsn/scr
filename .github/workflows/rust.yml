@@ -22,36 +22,28 @@ jobs:
       steps:
         - uses: actions/checkout@v3
 
-        - name: install cargo wix
-          run: cargo install cargo-wix
-
         - name: Rust build
           id: build
           run: |
-            cargo build --release
-            echo "version=cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version'" >> $GITHUB_OUTPUT
-
-        - name: Generate MSI installer
-          id: generate_msi
-          run:  |
-              cargo wix
-              dir target\wix
-              echo "msi_file=dir target\wix\*.msi -n" >> $ GITHUB_OUTPUT
+            cargo build --release --target-dir nuget
 
         - name: Package for NuGet
+          env:
+            CHOCO_API_KEY: ${{ secrets.CHOCO_API_KEY }}
           run: |
-            if (-not (Test-Path nuget)) {
-              mkdir nuget
-            }
-            $msi_file = (Get-ChildItem -Path target/wix/*.msi).Name
-            echo "path: ${msi_file}"
-            cp  target/wix/$msi_file nuget/
             cd nuget
+            $md5 = (Get-FileHash -Path "release\scanr.exe" -Algorithm MD5).Hash
+            $sha = (Get-FileHash -Path "release\scanr.exe" -Algorithm SHA256).Hash
+            
+            $verificationContent = Get-Content -Path "verification.txt" -Raw
+            $verificationContent = $verificationContent -replace '\[MD5\]', $md5 -replace '\[SHA\]', $sha
+            $verificationContent | Set-Content -Path "verification.txt"
+            
             dir
             choco pack
-            choco apikey --key ${{ secrets.CHOCO_API_KEY }} --source https://push.chocolatey.org/
-#            choco push nuget/*.nupkg --source https://push.chocolatey.org/
-
+            $nupkg_file = (Get-ChildItem -Path *.nupkg).Name
+            choco push $nupkg_file --source https://push.chocolatey.org/ --api-key ${{ secrets.CHOCO_API_KEY }}
+            
         - name: Create GitHub Release
           uses: softprops/action-gh-release@v1
           with:
@@ -62,5 +54,5 @@ jobs:
         - name: upload windows build
           uses: actions/upload-artifact@master
           with:
-            name: ${{ steps.generate_msi.outputs.msi_file }}
-            path: target/wix/*.msi
+            name: scanr.exe
+            path: nuget/release/scanr.exe

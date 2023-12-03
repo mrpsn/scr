@@ -1,9 +1,20 @@
 <?xml version="1.0"?>
 <package >
-  <metadata>
-    <id>scanr</id>
-    <version>0.1.0</version>
-    <authors>mrpsn</authors>
-    <description>"Rapidly find big files in a directory tree. Free your disk space. 100% Rust."</description>
-  </metadata>
+    <metadata>
+        <id>scanr</id>
+        <title>Fast directory scanner</title>
+        <version>0.1.0</version>
+        <authors>mrpsn</authors>
+        <description><![CDATA[
+                    Rapidly find large files in a directory tree.
+                    Free your disk space.
+                    100% Rust.
+                ]]></description>
+        <tags>rust cli basic simple directory scan fast rapid pure-rust cmd shell terminal</tags>
+        <projectUrl>https://github.com/mrpsn/scr</projectUrl>
+    </metadata>
+    <files>
+        <file src="verification.txt" target="" />
+        <file src="LICENSE.txt" target="" />
+     </files>
 </package>

@@ -1,0 +1,10 @@
+Verification for scanr Package MSI:
+
+1. File Name: scanr.exe
+2. MD5 Checksum: [MD5]
+3. SHA-256 Checksum: [SHA]
+
+Verify the above details before installation to ensure the integrity and authenticity of the scanr package.
+
+Best regards,
+mrpsn
