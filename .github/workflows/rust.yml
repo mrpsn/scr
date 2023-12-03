@@ -34,6 +34,7 @@ jobs:
             path: nuget/release/scanr.exe
 
         - name: Package for NuGet
+          id: package
           if: startsWith(github.ref, 'refs/tags/v')
           env:
             CHOCO_API_KEY: ${{ secrets.CHOCO_API_KEY }}
@@ -57,6 +58,15 @@ jobs:
             choco pack
             $nupkg_file = (Get-ChildItem -Path *.nupkg).Name
             choco push $nupkg_file --source https://push.chocolatey.org/ --api-key ${{ secrets.CHOCO_API_KEY }}
+            echo "nupkg_file=$nupkg_file" >> $GITHUB_OUTPUT
+
+        - name: upload package artifact
+          uses: actions/upload-artifact@master
+          env:
+            PACKAGE: ${{ steps.package.outputs.nupkg_file }}
+          with:
+            name: $PACKAGE
+            path: nuget/$PACKAGE
             
         - name: Create GitHub Release
           uses: softprops/action-gh-release@v1
