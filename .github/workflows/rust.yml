@@ -3,8 +3,7 @@ name: Rust
 on:
   push:
     branches: [ "master" ]
-  pull_request:
-    branches: [ "master" ]
+    tags: 'v*'
 
 env:
   CARGO_TERM_COLOR: always
@@ -31,7 +30,7 @@ jobs:
   windows_package_release:
       runs-on: windows-latest
       needs: windows_build
-      if: startsWith(github.ref, 'refs/tags/')
+      if: startsWith(github.ref, 'refs/tags/v')
       steps:
         - name: Package for NuGet
           env:
