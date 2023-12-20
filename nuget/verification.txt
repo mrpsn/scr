@@ -5,6 +5,8 @@ Verification for scanr Package MSI:
 3. SHA-256 Checksum: [SHA]
 
 Verify the above details before installation to ensure the integrity and authenticity of the scanr package.
+The installation package can be downloaded from: https://community.chocolatey.org/packages/scanr
+The source can be downloaded from: https://github.com/mrpsn/scr
 
 Best regards,
 mrpsn
