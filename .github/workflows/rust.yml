@@ -71,6 +71,8 @@ jobs:
         - name: Create GitHub Release
           uses: softprops/action-gh-release@v1
           with:
-            files: 'nuget/*.nupkg'
+            files: |
+              'nuget/*.nupkg'
+              'nuget/release/scanr.exe'
             token: ${{ secrets.GITHUB_TOKEN }}
-          if: startsWith(github.ref, 'refs/tags/')
+          if: startsWith(github.ref, 'refs/tags/v')
