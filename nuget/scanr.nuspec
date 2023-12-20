@@ -25,5 +25,6 @@
     <files>
         <file src="verification.txt" target="" />
         <file src="LICENSE.txt" target="" />
+        <file src="release\scanr.exe" target="tools" />
      </files>
 </package>
