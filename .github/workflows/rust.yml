@@ -61,12 +61,11 @@ jobs:
           echo "nupkg_file=$nupkg_file" >> $GITHUB_OUTPUT
 
       - name: Upload package artifact
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v3
-        env:
-          PACKAGE: ${{ steps.package.outputs.nupkg_file }}
         with:
-          name: ${{ env.PACKAGE }}
-          path: nuget/${{ env.PACKAGE }}
+          name: ${{ steps.package.outputs.nupkg_file }}
+          path: nuget/*.nupkg
 
       - name: Create GitHub Release
         id: release
