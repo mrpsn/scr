@@ -61,11 +61,12 @@ jobs:
             echo "nupkg_file=$nupkg_file" >> $GITHUB_OUTPUT
 
         - name: upload package artifact
+          needs: package
           uses: actions/upload-artifact@master
           env:
             PACKAGE: ${{ steps.package.outputs.nupkg_file }}
           with:
-            name: $PACKAGE
+            name: ${{ PACKAGE }}
             path: nuget/$PACKAGE
             
         - name: Create GitHub Release
