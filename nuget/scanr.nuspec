@@ -4,7 +4,7 @@
         <id>scanr</id>
         <title>Fast directory scanner</title>
         <summary>Scanr: A rapid cli directory scanner, pure Rust.</summary>
-        <version>0.0.0</version>
+        <version>0.2.0</version>
         <authors>mrpsn</authors>
         <description><![CDATA[
                     Rapidly find large files in a directory tree.
@@ -17,7 +17,7 @@
         <licenseUrl>https://www.apache.org/licenses/LICENSE-2.0</licenseUrl>
         <releaseNotes>
                     <![CDATA[
-                        Version 0.0.0:
+                        Version 0.2.0:
                         - Alpha release.
                     ]]>
                 </releaseNotes>
@@ -28,3 +28,4 @@
         <file src="release\scanr.exe" target="tools" />
      </files>
 </package>
+
