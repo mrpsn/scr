@@ -1,23 +1,22 @@
 mod args;
 pub mod util;
 
-use crate::util::print::{display_time};
+use crate::args::Args;
+use crate::util::print::display_time;
 use bisection::bisect_left;
+use core::time::Duration;
 use futures::future::join_all;
 use sorted_vec::ReverseSortedVec;
 use std::cmp::{Ordering, Reverse};
+use std::ops::AddAssign;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering::SeqCst;
 use std::sync::Arc;
-use std::{thread};
-use core::time::Duration;
-use std::ops::AddAssign;
+use std::thread;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::time::Instant;
 use util::print::FilePrinter;
-use crate::args::Args;
-
 
 pub enum StatusMsg<'a> {
     Status(&'a ScanResult),
@@ -32,15 +31,13 @@ enum StatusUpdate {
 impl From<PathBuf> for StatusUpdate {
     fn from(path: PathBuf) -> Self {
         let meta = path.metadata().unwrap();
-        StatusUpdate::File(
-            Filesize {
-                path: path.to_str().unwrap().to_string(),
-                size: path.metadata().unwrap().len(),
-                modified: display_time(meta.modified()),
-                created: display_time(meta.created()),
-                used: display_time(meta.accessed()),
-            }
-        )
+        StatusUpdate::File(Filesize {
+            path: path.to_str().unwrap().to_string(),
+            size: path.metadata().unwrap().len(),
+            modified: display_time(meta.modified()),
+            created: display_time(meta.created()),
+            used: display_time(meta.accessed()),
+        })
     }
 }
 
@@ -71,7 +68,6 @@ impl PartialEq for Filesize {
     }
 }
 
-
 #[derive(Default)]
 pub struct ScanResult {
     errors: usize,
@@ -87,7 +83,6 @@ impl AddAssign for ScanResult {
     }
 }
 
-
 async fn scan_dir(
     path: PathBuf,
     min_size: u64,
@@ -100,33 +95,40 @@ async fn scan_dir(
     if let Ok(dir_iter) = std::fs::read_dir(path) {
         for r in dir_iter {
             match r {
+                Ok(e) if e.file_type().is_ok_and(|f| f.is_symlink()) => files += 1,
 
-                Ok(e) if e.file_type().is_ok_and(|f| f.is_symlink()) => files +=1,
+                Ok(e) if e.file_type().is_ok_and(|f| f.is_dir()) => tx_dir
+                    .send(Dir {
+                        path: e.path(),
+                        tx_dir: tx_dir.clone(),
+                        tx_file: tx_file.clone(),
+                    })
+                    .expect("failed to send dir on channel"),
 
-                Ok(e) if e.file_type().is_ok_and(|f| f.is_dir()) => tx_dir.send(
-                    Dir{path: e.path(), tx_dir: tx_dir.clone(), tx_file: tx_file.clone()})
-                                .expect("failed to send dir on channel"),
-
-                Ok(e) if e.metadata().is_ok_and(|m| m.len() >= min_size) =>
-                    tx_file.send(e.path().into()).map_or_else(
-                        |_| errors +=1, |_| files +=1),
+                Ok(e) if e.metadata().is_ok_and(|m| m.len() >= min_size) => tx_file
+                    .send(e.path().into())
+                    .map_or_else(|_| errors += 1, |_| files += 1),
 
                 Ok(e) if e.metadata().is_err() => errors += 1,
 
-                Ok(_) => files +=1,  // file loaded ok, but < the minimum size
+                Ok(_) => files += 1, // file loaded ok, but < the minimum size
 
-                Err(_) => errors +=1,
+                Err(_) => errors += 1,
             }
-        };
+        }
     } else {
         errors += 1;
     };
-    tx_file.send(StatusUpdate::Result(ScanResult { errors, files, directories: 1 })).unwrap();
+    tx_file
+        .send(StatusUpdate::Result(ScanResult {
+            errors,
+            files,
+            directories: 1,
+        }))
+        .unwrap();
 }
 
-
 fn print_files(min_size: Arc<AtomicU64>, mut rx_file: UnboundedReceiver<StatusUpdate>) {
-
     let start_time = Instant::now();
 
     let n = Args::parse_args().nentries;
@@ -136,14 +138,13 @@ fn print_files(min_size: Arc<AtomicU64>, mut rx_file: UnboundedReceiver<StatusUp
     let mut current_status = ScanResult::default();
 
     while let Some(msg) = rx_file.blocking_recv() {
-
         match msg {
             StatusUpdate::Result(sr) => {
                 current_status += sr;
-                if &current_status.directories % 10 == 0 {
-                    printer.print_status(StatusMsg::Status(&current_status));
+                if current_status.directories % 10 == 0 {
+                    printer.draw(&entries, &current_status, None);
                 }
-            },
+            }
 
             StatusUpdate::File(file) => {
                 let current_min = min_size.load(SeqCst);
@@ -162,12 +163,7 @@ fn print_files(min_size: Arc<AtomicU64>, mut rx_file: UnboundedReceiver<StatusUp
                             }
                         }
 
-                        let n_lines = n.min(entries.len()).min(printer.page_size);
-                        if idx <= printer.page_size {
-                            for (i, entry) in entries[idx..n_lines].iter().enumerate() {
-                                printer.print_line(&entry.0, idx + i);
-                            }
-                        }
+                        printer.draw(&entries, &current_status, None);
                     }
                 }
             }
@@ -175,9 +171,8 @@ fn print_files(min_size: Arc<AtomicU64>, mut rx_file: UnboundedReceiver<StatusUp
     }
     let end_time = Instant::now();
     let elapsed_time = end_time - start_time;
-    printer.print_final(entries, StatusMsg::Final(current_status, elapsed_time));
+    printer.print_final(&entries, &current_status, elapsed_time);
 }
-
 
 #[tokio::main]
 async fn main() {
@@ -190,18 +185,19 @@ async fn main() {
 
     let t1 = thread::Builder::new()
         .name("file_printer".into())
-        .spawn(move ||
-            print_files(
-                floor_clone,
-                file_ch.1
-            )
-        ).unwrap();
+        .spawn(move || print_files(floor_clone, file_ch.1))
+        .unwrap();
 
     let init = move |path| {
         let dir_ch = unbounded_channel::<Dir>();
-        dir_ch.0.send(
-            Dir{path, tx_dir: dir_ch.0.clone(), tx_file: file_ch.0}
-        ).unwrap();
+        dir_ch
+            .0
+            .send(Dir {
+                path,
+                tx_dir: dir_ch.0.clone(),
+                tx_file: file_ch.0,
+            })
+            .unwrap();
         dir_ch.1
     };
     let mut dir_ch = init(args.path);
@@ -219,5 +215,4 @@ async fn main() {
     join_all(scans).await;
 
     t1.join().unwrap();
-
 }
