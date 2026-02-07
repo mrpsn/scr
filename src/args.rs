@@ -1,4 +1,4 @@
-use clap::{arg, command, Parser};
+use clap::Parser;
 use std::path::PathBuf;
 use std::process;
 
@@ -13,7 +13,7 @@ pub struct Args {
     pub path: PathBuf,
 
     /// Find files >= to size (in bytes).
-    #[arg(short= 's', long, value_name = "MINSIZE", default_value_t = 0)]
+    #[arg(short = 's', long, value_name = "MINSIZE", default_value_t = 0)]
     pub minsize: u64,
 
     /// number of entries to display
@@ -21,17 +21,34 @@ pub struct Args {
     pub nentries: usize,
 
     /// print line numbers.
-    #[arg(short, long, value_name = "INDEX", required = false, default_value = "false")]
+    #[arg(
+        short,
+        long,
+        value_name = "INDEX",
+        required = false,
+        default_value = "false"
+    )]
     pub index_print: bool,
 
     /// print size in Mb.
-    #[arg(short, long, value_name = "Mb", required = false, default_value = "false")]
+    #[arg(
+        short,
+        long,
+        value_name = "Mb",
+        required = false,
+        default_value = "true"
+    )]
     pub m_byt: bool,
 
     /// print size in Gb.
-    #[arg(short, long, value_name = "Gb", required = false, default_value = "false")]
+    #[arg(
+        short,
+        long,
+        value_name = "Gb",
+        required = false,
+        default_value = "false"
+    )]
     pub g_byt: bool,
-
 }
 
 impl Args {
@@ -41,10 +58,12 @@ impl Args {
         args
     }
     fn validate(&self) {
-        if ! self.path.is_dir() {
-            eprintln!("Error: The path {} does not exist or is not a directory.", self.path.display());
+        if !self.path.is_dir() {
+            eprintln!(
+                "Error: The path {} does not exist or is not a directory.",
+                self.path.display()
+            );
             process::exit(2);
         }
     }
-
 }
