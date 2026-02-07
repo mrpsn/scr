@@ -7,13 +7,16 @@ use core::time::Duration;
 use rayon::prelude::*;
 use sorted_vec::ReverseSortedVec;
 use std::cmp::{Ordering, Reverse};
+use std::collections::HashSet;
 use std::io::ErrorKind;
 use std::ops::AddAssign;
+use std::os::unix::fs::MetadataExt;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering::SeqCst;
 use std::sync::Arc;
 use std::thread;
+use sysinfo::Disks;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::time::Instant;
 use util::print::FilePrinter;
@@ -83,8 +86,13 @@ fn scan_dir(
     path: PathBuf,
     min_size: Arc<AtomicU64>,
     tx_file: UnboundedSender<StatusUpdate>,
+    allowed_devices: Arc<HashSet<u64>>,
+    parent_dev: Option<u64>,
 ) -> ScanResult {
     let mut result = ScanResult::default();
+
+    let current_dev =
+        parent_dev.unwrap_or_else(|| std::fs::metadata(&path).map(|m| m.dev()).unwrap_or(0));
 
     match std::fs::read_dir(path) {
         Ok(dir_iter) => {
@@ -97,7 +105,26 @@ fn scan_dir(
                     let mut thread_result = ScanResult::default();
                     match e.file_type() {
                         Ok(ft) if ft.is_dir() => {
-                            thread_result += scan_dir(e.path(), min_size.clone(), tx_file.clone());
+                            let mut enter = true;
+                            let mut dev = current_dev;
+
+                            // Check for device boundary
+                            if let Ok(m) = e.metadata() {
+                                dev = m.dev();
+                                if dev != current_dev && !allowed_devices.contains(&dev) {
+                                    enter = false;
+                                }
+                            }
+
+                            if enter {
+                                thread_result += scan_dir(
+                                    e.path(),
+                                    min_size.clone(),
+                                    tx_file.clone(),
+                                    allowed_devices.clone(),
+                                    Some(dev),
+                                );
+                            }
                         }
                         Ok(ft) => {
                             if ft.is_symlink() {
@@ -204,8 +231,22 @@ async fn main() {
     let root = args.path.clone();
     let floor_clone_2 = Arc::clone(&floor);
 
+    // Determine allowed devices (physcial disks + start path)
+    let disks = Disks::new_with_refreshed_list();
+    let mut allowed: HashSet<u64> = HashSet::new();
+    for disk in &disks {
+        if let Ok(m) = std::fs::metadata(disk.mount_point()) {
+            allowed.insert(m.dev());
+        }
+    }
+    // Ensure the start path is allowed (e.g. if user specifically scans a mount point)
+    if let Ok(m) = std::fs::metadata(&args.path) {
+        allowed.insert(m.dev());
+    }
+    let allowed_arc = Arc::new(allowed);
+
     let handle = tokio::task::spawn_blocking(move || {
-        let final_res = scan_dir(root, floor_clone_2, tx.clone());
+        let final_res = scan_dir(root, floor_clone_2, tx.clone(), allowed_arc, None);
         tx.send(StatusUpdate::Result(final_res)).unwrap();
     });
 

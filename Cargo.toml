@@ -21,4 +21,5 @@ num-format="0.4.4"
 ratatui = "0.29.0"
 rayon = "1.11.0"
 sorted-vec = "0.8.3"
+sysinfo = "0.38.1"
 tokio = { version="1.33.0", features = ["full"] }
