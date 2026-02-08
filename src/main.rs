@@ -5,8 +5,6 @@ use crate::args::Args;
 use crate::util::print::display_time;
 use core::time::Duration;
 use rayon::prelude::*;
-use sorted_vec::ReverseSortedVec;
-use std::cmp::{Ordering, Reverse};
 use std::collections::HashSet;
 use std::io::ErrorKind;
 use std::ops::AddAssign;
@@ -44,19 +42,13 @@ impl From<PathBuf> for StatusUpdate {
     }
 }
 
-#[derive(PartialOrd, Eq, Clone)]
+#[derive(PartialOrd, Ord, Eq, Clone)]
 pub struct Filesize {
     path: String,
     size: u64,
     modified: String,
     created: String,
     used: String,
-}
-
-impl Ord for Filesize {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.size.cmp(&other.size)
-    }
 }
 
 impl PartialEq for Filesize {
@@ -174,7 +166,7 @@ fn print_files(min_size: Arc<AtomicU64>, mut rx_file: UnboundedReceiver<StatusUp
     let n = Args::parse_args().nentries;
     let mut printer = FilePrinter::new("");
 
-    let mut entries = ReverseSortedVec::<Filesize>::with_capacity(n);
+    let mut entries: Vec<Filesize> = Vec::with_capacity(n + 1);
     let mut current_status = ScanResult::default();
 
     while let Some(msg) = rx_file.blocking_recv() {
@@ -189,19 +181,16 @@ fn print_files(min_size: Arc<AtomicU64>, mut rx_file: UnboundedReceiver<StatusUp
             StatusUpdate::File(file) => {
                 let current_min = min_size.load(SeqCst);
                 if file.size > current_min {
-                    entries.insert(Reverse(file));
+                    entries.push(file);
+                    // Sort descending
+                    entries.sort_by(|a, b| b.size.cmp(&a.size));
 
-                    // The vector is sorted in reverse (largest size first).
-                    // If we exceed the limit, the last element is the smallest of the top N+1,
-                    // so we remove it.
                     if entries.len() > n {
-                        entries.pop();
+                        entries.truncate(n);
                     }
 
-                    if entries.len() == n {
-                        if let Some(entry) = entries.last() {
-                            min_size.store(entry.0.size, SeqCst);
-                        }
+                    if let Some(entry) = entries.last() {
+                        min_size.store(entry.size, SeqCst);
                     }
 
                     printer.draw(&entries, &current_status, None);
